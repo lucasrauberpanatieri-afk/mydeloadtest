@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyDeload</title>
+
+    <!-- Links corrigidos: rel em vez de class -->
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <link rel="icon" type="image/png" href="icon-192.png">
+    <link rel="manifest" href="manifest.json">
+
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --text: #f8fafc;
+            --accent: #3b82f6;
+        }
+        body { 
+            background-color: var(--bg); 
+            color: var(--text); 
+            font-family: sans-serif;
+            margin: 0;
+            padding-bottom: 90px;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .nav-item.active { color: var(--accent) !important; }
+        
+        #welcome-modal, #history-detail-modal {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(10px);
+            z-index: 100; align-items: center; justify-content: center; padding: 20px;
+        }
+
+        .calendar-day {
+            aspect-ratio: 1/1; display: flex; align-items: center;
+            justify-content: center; font-size: 12px; font-weight: bold; border-radius: 12px;
+        }
+        .calendar-day.has-data { cursor: pointer; }
+        .calendar-day.has-data:active { scale: 0.95; transition: all 0.1s; }
+
+        /* Estilos para o ponto de anotação (classes Tailwind arbitrárias) */
+        .note-dot {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body class="bg-[#0f172a] text-slate-50">
+
+    <!-- Modal de Boas-vindas -->
+    <div id="welcome-modal" style="display: flex;">
+        <div class="bg-slate-800 p-8 rounded-3xl w-full max-w-sm shadow-2xl border border-slate-700">
+            <h2 class="text-2xl font-black mb-2">Olá! 👋</h2>
+            <p class="text-slate-400 text-sm mb-6">Como você se chama?</p>
+            <input type="text" id="user-name-input" placeholder="Seu nome" 
+                   class="w-full p-4 bg-slate-900 border-2 border-slate-700 rounded-2xl mb-4 outline-none focus:border-blue-500 font-bold text-white">
+            <button onclick="saveName()" class="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold active:scale-95 transition-all">
+                Começar
+            </button>
+        </div>
+    </div>
+
+    <!-- Modal de Detalhes do Dia -->
+    <div id="history-detail-modal" onclick="closeHistoryModal(event)">
+        <div class="bg-slate-800 p-6 rounded-3xl w-full max-w-sm shadow-2xl border border-slate-700 relative" onclick="event.stopPropagation()">
+            <button onclick="document.getElementById('history-detail-modal').style.display='none'" class="absolute top-4 right-4 text-slate-400 hover:text-white font-bold text-lg">✕</button>
+            <h3 id="modal-date" class="text-xs font-bold uppercase tracking-wider text-blue-400 mb-1">00/00/0000</h3>
+            <h2 id="modal-week" class="text-2xl font-black mb-4">Semana X</h2>
+            
+            <div class="bg-slate-900/60 p-4 rounded-2xl border border-slate-700 mb-4">
+                <span class="text-[10px] text-slate-400 block uppercase font-bold mb-1">Rendimento</span>
+                <span id="modal-performance" class="font-bold text-sm text-slate-200">-</span>
+            </div>
+
+            <div class="bg-slate-900/60 p-4 rounded-2xl border border-slate-700 max-h-60 overflow-y-auto">
+                <span class="text-[10px] text-slate-400 block uppercase font-bold mb-1">Anotações do Treino</span>
+                <p id="modal-notes" class="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed italic">Nenhuma anotação registrada para este dia.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Aba Ciclo -->
+    <div id="tab-ciclo" class="tab-content active p-6 max-w-md mx-auto">
+        <h1 id="greeting" class="text-3xl font-black mb-6">Meu Ciclo</h1>
+        <div class="bg-slate-800 p-6 rounded-3xl border border-slate-700 shadow-xl">
+            <span id="week-tag" class="text-[10px] font-bold uppercase px-2 py-1 bg-blue-500/20 text-blue-400 rounded mb-2 inline-block">Carga</span>
+            <h2 id="week-title" class="text-5xl font-black mb-2">Semana 1</h2>
+            
+            <p id="rpe-tip" class="text-xs text-slate-400 mb-6 italic"></p>
+
+            <div class="border-t border-slate-700/60 pt-4 mt-2 space-y-4">
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Registrar treino de hoje</label>
+                    <div class="flex gap-2">
+                        <button onclick="setDailyPerformance('ruim')" id="perf-ruim" class="flex-1 py-3 rounded-xl bg-slate-900 text-slate-400 text-xs font-bold border border-transparent active:scale-95 transition-all">Ruim 👎</button>
+                        <button onclick="setDailyPerformance('bom')" id="perf-bom" class="flex-1 py-3 rounded-xl bg-slate-900 text-slate-400 text-xs font-bold border border-transparent active:scale-95 transition-all">Bom 👍</button>
+                        <button onclick="setDailyPerformance('excelente')" id="perf-excelente" class="flex-1 py-3 rounded-xl bg-slate-900 text-slate-400 text-xs font-bold border border-transparent active:scale-95 transition-all">Incrível 🔥</button>
+                    </div>
+                </div>
+
+                <div id="notes-container" class="space-y-1.5 hidden">
+                    <div class="flex justify-between items-center px-0.5">
+                        <label for="daily-notes" class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Anotações Detalhadas</label>
+                        <span id="char-counter" class="text-[9px] font-bold text-slate-500">0 / 10.000</span>
+                    </div>
+                    <textarea id="daily-notes" oninput="handleNotesInput(this.value)" maxlength="10000" placeholder="Cargas utilizadas, exercícios, observações sobre o cansaço ou dores..." 
+                              class="w-full h-28 bg-slate-900 border border-slate-700/80 rounded-xl p-3 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-blue-500 resize-none leading-relaxed"></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Aba Histórico -->
+    <div id="tab-historico" class="tab-content p-6 max-w-md mx-auto">
+        <h1 class="text-3xl font-black mb-6">Histórico</h1>
+        <div class="bg-slate-800 p-6 rounded-3xl border border-slate-700 shadow-xl">
+            <div class="flex justify-between items-center mb-6">
+                <h3 id="month-name" class="font-bold capitalize">Mês</h3>
+                <div class="flex gap-2">
+                    <button onclick="changeMonth(-1)" class="p-2 bg-slate-700 rounded-xl"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg></button>
+                    <button onclick="changeMonth(1)" class="p-2 bg-slate-700 rounded-xl"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg></button>
+                </div>
+            </div>
+            <div class="grid grid-cols-7 gap-1 mb-2 text-center text-[10px] font-black text-slate-500 uppercase">
+                <div>D</div><div>S</div><div>T</div><div>Q</div><div>Q</div><div>S</div><div>S</div>
+            </div>
+            <div id="calendar-grid" class="grid grid-cols-7 gap-1"></div>
+        </div>
+    </div>
+
+    <!-- Aba Ajustes -->
+    <div id="tab-ajustes" class="tab-content p-6 max-w-md mx-auto">
+        <h1 class="text-3xl font-black mb-6">Ajustes</h1>
+        <div class="bg-slate-800 p-6 rounded-3xl border border-slate-700 space-y-6">
+            
+            <div class="flex items-center justify-between">
+                <span class="font-bold text-sm text-slate-300">Semanas de Carga</span>
+                <select onchange="updateRatio(this.value)" id="ratio-select" class="bg-slate-900 border-none rounded-xl p-2 text-sm font-bold text-blue-400">
+                    <option value="2">2 para 1</option>
+                    <option value="3">3 para 1</option>
+                    <option value="4">4 para 1</option>
+                    <option value="5">5 para 1</option>
+                </select>
+            </div>
+
+            <div class="border-t border-slate-700/60 pt-4 space-y-3">
+                <span class="font-bold text-sm text-slate-300 block">Backup de Dados</span>
+                <div class="flex gap-2">
+                    <button onclick="exportBackup()" class="flex-1 py-2.5 bg-blue-900/30 text-blue-400 rounded-xl text-xs font-bold border border-blue-900/40">
+                        Exportar JSON
+                    </button>
+                    <label class="flex-1 py-2.5 bg-slate-700 text-slate-300 rounded-xl text-xs font-bold text-center cursor-pointer border border-slate-600">
+                        Importar JSON
+                        <input type="file" id="importFile" class="hidden" accept=".json" onchange="importBackup(event)">
+                    </label>
+                </div>
+            </div>
+
+            <button onclick="resetApp()" class="w-full py-4 bg-red-900/20 text-red-400 rounded-2xl font-bold border border-red-900/30">
+                Resetar Dados
+            </button>
+        </div>
+    </div>
+
+    <!-- Navegação inferior -->
+    <nav class="fixed bottom-0 left-0 right-0 bg-slate-900/80 backdrop-blur-lg border-t border-slate-800 h-20 flex justify-around items-center z-50">
+        <button onclick="switchTab('ciclo')" id="nav-ciclo" class="nav-item active flex flex-col items-center gap-1 text-slate-500">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+            <span class="text-[9px] font-bold uppercase">Ciclo</span>
+        </button>
+        <button onclick="switchTab('historico')" id="nav-historico" class="nav-item flex flex-col items-center gap-1 text-slate-500">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span class="text-[9px] font-bold uppercase">Histórico</span>
+        </button>
+        <button onclick="switchTab('ajustes')" id="nav-ajustes" class="nav-item flex flex-col items-center gap-1 text-slate-500">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span class="text-[9px] font-bold uppercase">Ajustes</span>
+        </button>
+    </nav>
+
+    <script>
+        // ===== REGISTRO DO SERVICE WORKER =====
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').catch(err => console.log('SW não registrado:', err));
+            });
+        }
+
+        // ===== DADOS E TIPS =====
+        const rpeTips = {
+            1: "Início do ciclo: Foco na técnica e execução perfeita, RPE ~7.",
+            2: "Progressão: Adicione carga ou repetições mantendo boa forma, RPE ~8.",
+            3: "Pico de Esforço: Treinos pesados e intensos. Esforço alto, RPE ~9.",
+            4: "Overreaching: Volume máximo antes do descanso. Próximo à falha, RPE ~10."
+        };
+
+        const perfLabels = {
+            'ruim': 'Ruim 👎',
+            'bom': 'Bom 👍',
+            'excelente': 'Incrível 🔥'
+        };
+
+        let state = JSON.parse(localStorage.getItem('mydeload_v2')) || {
+            userName: "", 
+            currentWeek: 1, 
+            deloadRatio: 4, 
+            cycleStartDate: null,
+            history: {}
+        };
+
+        // Debounce timer para anotações
+        let notesDebounceTimer = null;
+        const DEBOUNCE_DELAY = 600; // ms
+
+        // ===== FUNÇÕES DE CICLO =====
+        function calculateAutoWeek() {
+            if (!state.cycleStartDate) {
+                const today = new Date();
+                state.cycleStartDate = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
+            }
+
+            const startParts = state.cycleStartDate.split('-');
+            const startDate = new Date(startParts[0], startParts[1], startParts[2]);
+            const todayDate = new Date();
+            todayDate.setHours(0,0,0,0);
+            startDate.setHours(0,0,0,0);
+
+            const diffTime = todayDate - startDate;
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            
+            const totalWeeksInCycle = parseInt(state.deloadRatio) + 1;
+            const rawWeeks = Math.floor(diffDays / 7) + 1;
+
+            if (rawWeeks > totalWeeksInCycle) {
+                const completedCycles = Math.floor((rawWeeks - 1) / totalWeeksInCycle);
+                startDate.setDate(startDate.getDate() + (completedCycles * totalWeeksInCycle * 7));
+                state.cycleStartDate = `${startDate.getFullYear()}-${startDate.getMonth()}-${startDate.getDate()}`;
+                state.currentWeek = ((rawWeeks - 1) % totalWeeksInCycle) + 1;
+            } else {
+                state.currentWeek = rawWeeks < 1 ? 1 : rawWeeks;
+            }
+        }
+
+        function saveName() {
+            const n = document.getElementById('user-name-input').value;
+            if (n.trim()) { 
+                state.userName = n; 
+                if(!state.cycleStartDate) {
+                    const today = new Date();
+                    state.cycleStartDate = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
+                }
+                save(); 
+                document.getElementById('welcome-modal').style.display='none'; 
+            }
+        }
+
+        // Esconde modal se já tiver nome
+        if (state.userName) {
+            document.getElementById('welcome-modal').style.display = 'none';
+        }
+
+        function switchTab(id) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById('tab-'+id).classList.add('active');
+            document.getElementById('nav-'+id).classList.add('active');
+            if (id === 'historico') {
+                render();
+            }
+        }
+
+        function updateRatio(value) {
+            state.deloadRatio = parseInt(value);
+            calculateAutoWeek();
+            save();
+        }
+
+        function setDailyPerformance(level) {
+            const now = new Date();
+            const key = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+            
+            if (state.history[key] && state.history[key].performance === level) {
+                // Se clicar no mesmo, pergunta antes de apagar
+                if (confirm("Remover o registro de hoje? As anotações serão perdidas.")) {
+                    delete state.history[key];
+                    document.getElementById('daily-notes').value = '';
+                }
+            } else {
+                const existingNotes = state.history[key] ? state.history[key].notes : '';
+                state.history[key] = {
+                    weekNum: state.currentWeek,
+                    performance: level,
+                    notes: existingNotes || ''
+                };
+            }
+            save();
+        }
+
+        // Handler com debounce para o textarea
+        function handleNotesInput(text) {
+            // Atualiza o contador instantaneamente
+            document.getElementById('char-counter').innerText = `${text.length.toLocaleString('pt-BR')} / 10.000`;
+            
+            clearTimeout(notesDebounceTimer);
+            notesDebounceTimer = setTimeout(() => {
+                saveNotesToState(text);
+            }, DEBOUNCE_DELAY);
+        }
+
+        function saveNotesToState(text) {
+            const now = new Date();
+            const key = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+            
+            if (state.history[key]) {
+                state.history[key].notes = text;
+                localStorage.setItem('mydeload_v2', JSON.stringify(state));
+            }
+        }
+
+        function save() {
+            localStorage.setItem('mydeload_v2', JSON.stringify(state));
+            render();
+        }
+
+        // ===== MODAIS =====
+        function openHistoryModal(dateKey, displayDate) {
+            const data = state.history[dateKey];
+            if (!data) return;
+
+            const isDeloadWeek = data.weekNum > state.deloadRatio;
+
+            document.getElementById('modal-date').innerText = displayDate;
+            document.getElementById('modal-week').innerText = `Semana ${data.weekNum} (${isDeloadWeek ? 'Deload' : 'Carga'})`;
+            document.getElementById('modal-performance').innerText = perfLabels[data.performance] || 'Registrado';
+            document.getElementById('modal-notes').innerText = data.notes && data.notes.trim() ? data.notes : "Nenhuma anotação registrada para este dia.";
+            
+            document.getElementById('history-detail-modal').style.display = 'flex';
+        }
+
+        function closeHistoryModal(event) {
+            document.getElementById('history-detail-modal').style.display = 'none';
+        }
+
+        // ===== BACKUP =====
+        function exportBackup() {
+            const dataStr = JSON.stringify(state, null, 2);
+            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+            const filename = `mydeload-backup-${new Date().toISOString().slice(0,10)}.json`;
+            
+            const link = document.createElement('a');
+            link.setAttribute('href', dataUri);
+            link.setAttribute('download', filename);
+            link.click();
+        }
+
+        function importBackup(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    if (imported.history !== undefined) {
+                        if (confirm("Isso irá substituir todos os seus dados atuais. Continuar?")) {
+                            state = imported;
+                            save();
+                            alert("Backup restaurado!");
+                        }
+                    } else { alert("Arquivo de backup inválido."); }
+                } catch(err) { alert("Erro ao processar o arquivo."); }
+                // Limpa o input para permitir reimportação do mesmo arquivo
+                event.target.value = null;
+            };
+            reader.readAsText(file);
+        }
+
+        // ===== CALENDÁRIO =====
+        let currentViewDate = new Date();
+        function changeMonth(dir) { 
+            currentViewDate.setMonth(currentViewDate.getMonth() + dir); 
+            render(); 
+        }
+
+        // ===== RENDER PRINCIPAL =====
+        function render() {
+            if (!state.userName) {
+                document.getElementById('welcome-modal').style.display='flex';
+                return;
+            }
+            
+            if(document.getElementById('ratio-select')) {
+                document.getElementById('ratio-select').value = state.deloadRatio || 4;
+            }
+
+            calculateAutoWeek();
+            
+            const isDeload = state.currentWeek > state.deloadRatio;
+            
+            document.getElementById('greeting').innerText = `Olá, ${state.userName}!`;
+            document.getElementById('week-title').innerText = "Semana " + state.currentWeek;
+            
+            const tag = document.getElementById('week-tag');
+            tag.innerText = isDeload ? "Deload" : "Carga";
+            tag.className = `text-[10px] font-bold uppercase px-2 py-1 rounded mb-2 inline-block ${isDeload ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`;
+
+            // Dica de RPE corrigida para considerar deload
+            const tip = isDeload 
+                ? "Deload: Recuperação ativa! Corte o volume total/peso pela metade." 
+                : (rpeTips[state.currentWeek] || "Mantenha o foco.");
+            document.getElementById('rpe-tip').innerText = tip;
+
+            const todayKey = `${new Date().getFullYear()}-${new Date().getMonth()}-${new Date().getDate()}`;
+            const hasTrainedToday = state.history[todayKey];
+            const currentPerf = hasTrainedToday ? state.history[todayKey].performance : null;
+
+            document.getElementById('perf-ruim').className = currentPerf === 'ruim' ? "flex-1 py-3 rounded-xl bg-red-600 text-white text-xs font-bold transition-all" : "flex-1 py-3 rounded-xl bg-slate-900 text-slate-400 text-xs font-bold transition-all";
+            document.getElementById('perf-bom').className = currentPerf === 'bom' ? "flex-1 py-3 rounded-xl bg-blue-600 text-white text-xs font-bold transition-all" : "flex-1 py-3 rounded-xl bg-slate-900 text-slate-400 text-xs font-bold transition-all";
+            document.getElementById('perf-excelente').className = currentPerf === 'excelente' ? "flex-1 py-3 rounded-xl bg-green-600 text-white text-xs font-bold transition-all" : "flex-1 py-3 rounded-xl bg-slate-900 text-slate-400 text-xs font-bold transition-all";
+
+            const notesContainer = document.getElementById('notes-container');
+            const dailyNotesInput = document.getElementById('daily-notes');
+            if (hasTrainedToday) {
+                notesContainer.classList.remove('hidden');
+                // Preserva o valor atual para não perder o que está sendo digitado
+                if (document.activeElement !== dailyNotesInput) {
+                    dailyNotesInput.value = state.history[todayKey].notes || '';
+                }
+                document.getElementById('char-counter').innerText = `${(state.history[todayKey].notes || '').length.toLocaleString('pt-BR')} / 10.000`;
+            } else {
+                notesContainer.classList.add('hidden');
+                dailyNotesInput.value = '';
+            }
+
+            // Calendário dinâmico
+            const grid = document.getElementById('calendar-grid');
+            grid.innerHTML = '';
+            const y = currentViewDate.getFullYear(), m = currentViewDate.getMonth();
+            document.getElementById('month-name').innerText = new Intl.DateTimeFormat('pt-br', {month:'long', year:'numeric'}).format(currentViewDate);
+            const daysInM = new Date(y, m+1, 0).getDate();
+            
+            let startDay = new Date(y, m, 1).getDay();
+            for(let i=0; i<startDay; i++) grid.appendChild(document.createElement('div'));
+            
+            for(let d=1; d<=daysInM; d++) {
+                const day = document.createElement('div');
+                const k = `${y}-${m}-${d}`;
+                const historyItem = state.history[k];
+                
+                let bgClass = 'text-slate-600 bg-slate-900/40';
+                let extraClass = '';
+                let isDeloadWeek = false;
+                
+                if (historyItem) {
+                    extraClass = 'has-data';
+                    const savedWeek = historyItem.weekNum || 1;
+                    const maxRatio = state.deloadRatio || 4;
+                    
+                    const formattedDate = `${String(d).padStart(2, '0')}/${String(m + 1).padStart(2, '0')}/${y}`;
+                    // Usando addEventListener em vez de onclick inline
+                    day.addEventListener('click', () => openHistoryModal(k, formattedDate));
+
+                    if(savedWeek > maxRatio) {
+                        bgClass = 'bg-amber-500/80 text-slate-950';
+                        isDeloadWeek = true;
+                    } else {
+                        if(historyItem.performance === 'excelente') bgClass = 'bg-emerald-600 text-white';
+                        else if(historyItem.performance === 'ruim') bgClass = 'bg-red-500 text-white';
+                        else bgClass = 'bg-blue-600 text-white';
+                    }
+                }
+                
+                if(k === todayKey) {
+                    day.className = `calendar-day relative ${bgClass} ${extraClass} border-2 border-blue-400`;
+                } else {
+                    day.className = `calendar-day relative ${bgClass} ${extraClass}`;
+                }
+                
+                day.innerText = d;
+
+                // Ponto de anotação corrigido (agora usa classe CSS, não Tailwind inline)
+                if (historyItem && historyItem.notes && historyItem.notes.trim() !== '') {
+                    const dot = document.createElement('span');
+                    dot.className = 'note-dot';
+                    if (isDeloadWeek) {
+                        dot.style.backgroundColor = '#1e293b'; // cor escura para fundo âmbar
+                        dot.style.opacity = '0.7';
+                    } else {
+                        dot.style.backgroundColor = 'white';
+                        dot.style.opacity = '0.9';
+                        dot.style.boxShadow = '0 0 2px rgba(0,0,0,0.5)';
+                    }
+                    day.appendChild(dot);
+                }
+                
+                grid.appendChild(day);
+            }
+        }
+
+        function resetApp() { 
+            if(confirm("Apagar tudo e reiniciar ciclo a partir de hoje?")) { 
+                localStorage.removeItem('mydeload_v2'); // Remove só a chave do app
+                location.reload(); 
+            } 
+        }
+
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', () => {
+            calculateAutoWeek();
+            render();
+        });
+    </script>
+</body>
+</html>
